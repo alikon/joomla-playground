@@ -25,6 +25,8 @@ sent to a server.
 - **Weblinks:** <https://joomla-projects.github.io/joomla-playground/?blueprint=weblinks>. Joomla with
   [Weblinks](https://github.com/joomla-extensions/weblinks) installed, the component for a directory of links that
   used to be part of Joomla. It opens on its list in the administrator.
+- **Alikonweb:** <https://alikon.github.io/joomla-playground/?blueprint=weblinks>. Joomla with
+  [Alikonweb](https://github.com/alikon/testcom) installed, the Alikonweb package with all extensions
 
 ## Logging in
 
