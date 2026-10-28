@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "title": "Alikonweb",
+    "description": "Joomla with the Alikonweb (alikon/testcom) installed.",
+    "author": "Joomla Playground"
+  },
+  "preferredVersions": {
+    "joomla": "6.2"
+  },
+  "landingPage": "/administrator/index.php?option=com_installer&view=manage",
+  "steps": [
+    {
+      "step": "installExtension",
+      "url": "assets/alikonweb/pkg_alikonweb.zip"
+    }
+  ]
+}

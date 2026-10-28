@@ -1,4 +1,7 @@
 {
+  "alikonweb/pkg_weblinks.zip": {
+    "url": "https://github.com/alikon/testcom/releases/download/v1.5/pkg-alikonweb-1.5.0.zip"
+  },
   "weblinks/pkg_weblinks.zip": {
     "url": "https://github.com/joomla-extensions/weblinks/releases/download/5.2.0/pkg-weblinks-5.2.0.zip"
   },
