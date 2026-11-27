@@ -18,6 +18,7 @@ import { createSpawnHandler } from '@php-wasm/util';
 import { hasBase, readBase, readMeta, readSnapshot, siteLockName, writeBase, writeMeta, writeSnapshot } from './storage.js';
 import { DEFAULT_PHP_VERSION } from './blueprint.js';
 import { BlueprintError, runSteps } from './blueprint-steps.js';
+import { createSiteApi } from './site-api.js';
 
 const DOCUMENT_ROOT = '/var/www/html';
 const CA_BUNDLE = '/internal/shared/ca-bundle.crt';
@@ -44,9 +45,10 @@ const channel = new BroadcastChannel('joomla-playground');
  * changes: paths below the document root that changed since the site was unpacked from its base, and the folders
  *          that were renamed (moved with all their files)
  * dirty:   whether files changed since the last snapshot
+ * api:     the site API (see site-api.js)
  *
  * @type {{php: PHP, phpVersion: string, handler: PHPRequestHandler, manifest: object, bundleUrl: string, password: string, site: string|null,
- *   base: {id: string|null, bytes: Uint8Array|null}, changes: {paths: Set<string>, trees: Set<string>}, dirty: boolean}}
+ *   base: {id: string|null, bytes: Uint8Array|null}, changes: {paths: Set<string>, trees: Set<string>}, dirty: boolean, api: ReturnType<typeof createSiteApi>}}
  */
 let state = null;
 
@@ -64,7 +66,7 @@ function serialized(task) {
   return run;
 }
 
-const actions = { boot, save, exportSite, flush };
+const actions = { boot, save, exportSite, flush, site: siteApi, pullRequestTest, patchTester };
 
 self.onmessage = async ({ data }) => {
   const action = actions[data?.type];
@@ -77,7 +79,7 @@ self.onmessage = async ({ data }) => {
     const { value, transfer = [] } = await action(data);
     self.postMessage({ type: 'result', id: data.id, value }, transfer);
   } catch (error) {
-    self.postMessage({ type: 'result', id: data.id, error: String(error?.message ?? error) });
+    self.postMessage({ type: 'result', id: data.id, error: String(error?.message ?? error), code: error?.code ?? null });
   }
 };
 
@@ -242,6 +244,8 @@ async function boot({ base, scope, joomla, site = null, title = null, zip = null
     changes,
     dirty: false,
   };
+  // Requests of the site API go through the current handler: a blueprint with "login": false replaces it.
+  state.api = createSiteApi({ php, root: DOCUMENT_ROOT, siteUrl, request: (request) => state.handler.request(request) });
 
   if (meta) {
     state.site = site;
@@ -465,6 +469,107 @@ function scheduleSnapshot({ now: immediately = false } = {}) {
     snapshotTimer = null;
     serialized(() => state.dirty && snapshot(state.site)).catch((error) => console.error('Cannot save the site:', error));
   }, Math.max(0, Math.min(SNAPSHOT_DELAY, firstChange + SNAPSHOT_MAX_DELAY - now)));
+}
+
+/**
+ * The Patch Tester's test of a pull request of joomla-cms: the id of its row in #__patchtester_tests (which its revert
+ * task takes), or null when the pull request is not applied.
+ */
+async function pullRequestTest({ pullRequest }) {
+  const response = await serialized(() =>
+    runPhp(state.php, `
+      $db = new PDO('sqlite:' . ${JSON.stringify(DOCUMENT_ROOT)} . '/data/joomla.sqlite');
+      try {
+          $statement = $db->prepare('SELECT MAX(id) FROM jos_patchtester_tests WHERE pull_id = ?');
+          $statement->execute([${Number(pullRequest)}]);
+          echo (int) $statement->fetchColumn();
+      } catch (PDOException) {
+          echo 0;
+      }
+    `)
+  );
+
+  return { value: Number(response.text.trim()) || null };
+}
+
+/**
+ * The Patch Tester's GitHub token (its options gh_auth and gh_token in #__extensions), for the token this browser
+ * remembers (github-token.js):
+ *
+ * - set: a token to fill in. Only when the Patch Tester has none yet, unless overwrite is true.
+ * - clear: a token to remove again, if the Patch Tester has exactly that one.
+ *
+ * @returns {{installed: boolean, hasToken: boolean, changed: boolean}}
+ */
+async function patchTester({ set = null, overwrite = false, clear = null } = {}) {
+  for (const token of [set, clear]) {
+    if (token !== null && !/^[A-Za-z0-9_]{20,255}$/.test(token)) {
+      throw new Error('Not a GitHub token');
+    }
+  }
+
+  const response = await serialized(() =>
+    runPhp(state.php, `
+      $db = new PDO('sqlite:' . ${JSON.stringify(DOCUMENT_ROOT)} . '/data/joomla.sqlite');
+      $args = json_decode('${JSON.stringify({ set, overwrite: Boolean(overwrite), clear })}', true);
+      $result = ['installed' => false, 'hasToken' => false, 'changed' => false];
+
+      try {
+          $row = $db->query("SELECT extension_id, params FROM jos_extensions WHERE element = 'com_patchtester' AND type = 'component'")->fetch(PDO::FETCH_ASSOC);
+      } catch (PDOException) {
+          $row = false;
+      }
+
+      if ($row) {
+          $params = json_decode((string) $row['params'], true) ?: [];
+          $current = (string) ($params['gh_token'] ?? '');
+
+          if ($args['set'] !== null && ($current === '' || $args['overwrite']) && $current !== $args['set']) {
+              $params = array_merge($params, ['gh_auth' => 'token', 'gh_token' => $args['set']]);
+              $result['changed'] = true;
+          } elseif ($args['clear'] !== null && $current === $args['clear']) {
+              $params['gh_token'] = '';
+              $result['changed'] = true;
+          }
+
+          if ($result['changed']) {
+              $statement = $db->prepare('UPDATE jos_extensions SET params = ? WHERE extension_id = ?');
+              $statement->execute([json_encode($params), $row['extension_id']]);
+          }
+
+          $result['installed'] = true;
+          $result['hasToken'] = ($params['gh_token'] ?? '') !== '';
+      }
+
+      echo json_encode($result);
+    `)
+  );
+
+  const result = JSON.parse(response.text.trim());
+
+  // A saved site keeps the change.
+  if (result.changed) {
+    scheduleSnapshot({ now: true });
+  }
+
+  return { value: result };
+}
+
+/**
+ * An operation of the site API (see site-api.js): files, PHP code, requests and Joomla's console, for tools such
+ * as an editor or an MCP connection. It runs in the request queue, between the page's requests; a change is saved
+ * in a saved site's snapshot right after it.
+ */
+async function siteApi({ operation, args }) {
+  if (!state) {
+    throw new Error('The playground is not running');
+  }
+
+  try {
+    return { value: await serialized(() => state.api.call(operation, args)) };
+  } finally {
+    scheduleSnapshot({ now: true });
+  }
 }
 
 /**
@@ -1001,6 +1106,7 @@ async function download(url, what = 'Joomla') {
   const reader = response.body.getReader();
   const chunks = [];
   let received = 0;
+  let lastPercent = -1;
 
   for (;;) {
     const { done, value } = await reader.read();
@@ -1013,7 +1119,12 @@ async function download(url, what = 'Joomla') {
     received += value.length;
 
     if (total) {
-      progress(`Downloading ${what}: ${Math.round((received / total) * 100)}% of ${(total / 1048576).toFixed(1)} MB`);
+      const percent = Math.min(100, Math.round((received / total) * 100));
+
+      if (percent !== lastPercent) {
+        lastPercent = percent;
+        progress(`Downloading ${what}: ${percent}% of ${(total / 1048576).toFixed(1)} MB`);
+      }
     }
   }
 

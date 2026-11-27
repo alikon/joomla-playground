@@ -3,51 +3,122 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="text-scale" content="scale">
   <title>Joomla Playground</title>
+  <script>
+    // The address without parameters is the overview of the playground (overview/). A playground needs a parameter:
+    // ?new for an empty one, or ?blueprint=, ?pr=, ?site=, a blueprint after #, ... (see main.js and blueprint.js).
+    if (location.search.length < 2 && location.hash.length < 2) {
+      location.replace(new URL('overview/', location.href));
+    }
+  </script>
+  <link rel="icon" type="image/svg+xml" href="./joomla/joomla-favicon.svg">
+  <link rel="preload" href="./joomla/versions.json" as="fetch" crossorigin fetchpriority="high">
+  <link rel="modulepreload" href="./joomla/joomla-core-loader.js">
   <style>
+    /* Dark mode follows the browser, as Joomla's administrator does (the site's front end, Cassiopeia, has none). */
     :root {
       --bar: #1c2b4a;
       --bar-text: #f2f5fa;
       --muted: #b9c4d8;
       --accent: #f9a541;
       --error: #ff8a80;
-      --page: #ffffff;
-      color-scheme: light;
+      --page: light-dark(#ffffff, #1b2335);
+      --text: light-dark(#1a1a1a, #e6ebf4);
+      --text-muted: light-dark(#666666, #9aa6bb);
+      --link: light-dark(#1a5fb4, #8db8f0);
+      --link-border: light-dark(#a7bfdc, #46628a);
+      --danger: light-dark(#a51d2d, #ff8a80);
+      --danger-border: light-dark(#c6a0a6, #7a4a4f);
+      --line: light-dark(#dddddd, #2c3750);
+      --line-light: light-dark(#eeeeee, #253047);
+      --selected: light-dark(#e8f0fb, #263552);
+      --loading: light-dark(#f2f5fa, #0f151d);
+      --loading-text: light-dark(#1c2b4a, #e6ebf4);
+      color-scheme: light dark;
     }
 
     * { box-sizing: border-box; }
 
+    .visually-hidden:where(:not(:focus-within, :active)) {
+      position: absolute !important;
+      clip-path: inset(50%) !important;
+      overflow: hidden !important;
+      inline-size: 1px !important;
+      block-size: 1px !important;
+      margin: -1px !important;
+      padding: 0 !important;
+      border: 0 !important;
+      white-space: nowrap !important;
+    }
+
     html, body {
-      height: 100%;
+      block-size: 100%;
       margin: 0;
       background: var(--page);
       font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     }
 
     body {
+      block-size: 100dvh;
       display: flex;
       flex-direction: column;
     }
 
     header {
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px 16px;
+      flex-direction: column;
+      gap: 6px;
       padding: 8px 16px;
       background: var(--bar);
       color: var(--bar-text);
-      font-size: 14px;
+      font-size: 0.875rem;
+    }
+
+    header :where(a:any-link, button, select):focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    #sites-list :where(a:any-link, button):focus-visible {
+      outline-color: var(--link);
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 8px;
+    }
+
+    .statusbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 16px;
+      padding-block-start: 6px;
+      border-block-start: 1px solid rgba(185, 196, 216, 0.2);
+      font-size: 0.8125rem;
+      line-height: 1.4;
     }
 
     header h1 {
       margin: 0;
-      font-size: 16px;
+      font-size: 1rem;
       font-weight: 600;
     }
 
+    header h1 a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    header h1 a:hover { text-decoration: underline; }
+
     header button {
-      padding: 4px 12px;
+      min-block-size: 26px;
+      padding: 4px 10px;
       border: 1px solid var(--muted);
       border-radius: 4px;
       background: transparent;
@@ -61,11 +132,34 @@
       cursor: default;
     }
 
-    #status { color: var(--accent); }
-    #status.error { color: var(--error); white-space: pre-wrap; }
+    #status {
+      flex: 1 1 18rem;
+      min-inline-size: 0;
+      color: var(--accent);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #status.error {
+      color: var(--error);
+      white-space: pre-wrap;
+      overflow: visible;
+    }
+
     #info, #credentials-label, .version { color: var(--muted); }
 
+    .versions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 10px;
+      margin-inline-start: auto;
+    }
+
     .version select {
+      min-block-size: 26px;
       padding: 2px 4px;
       border: 1px solid var(--muted);
       border-radius: 4px;
@@ -73,43 +167,72 @@
       color: var(--bar-text);
       font: inherit;
     }
-    #credentials { font-family: ui-monospace, Consolas, monospace; }
-    .spacer { flex: 1; }
+
+    #joomla-version { inline-size: 6rem; }
+    #php-version { inline-size: 4rem; }
+
+    .credentials {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0 4px;
+      max-inline-size: 100%;
+    }
+
+    #credentials {
+      display: inline-block;
+      min-inline-size: min(32ch, calc(100dvw - 32px));
+      max-inline-size: 100%;
+      overflow-wrap: anywhere;
+      font-family: ui-monospace, Consolas, monospace;
+    }
+
+    #info {
+      display: inline-block;
+      min-inline-size: min(36ch, calc(100dvw - 32px));
+      min-block-size: 1lh;
+      white-space: nowrap;
+    }
+
+    #pull-request:not([hidden]) { display: contents; }
+    #pull-request-link { color: var(--bar-text); }
 
     .separator {
-      width: 1px;
+      inline-size: 1px;
       align-self: stretch;
       background: var(--muted);
       opacity: 0.4;
     }
 
-    #sites-menu { position: relative; }
+    #sites-menu { anchor-name: --sites-menu; }
 
-    #sites-menu summary {
-      padding: 4px 12px;
-      border: 1px solid var(--muted);
-      border-radius: 4px;
-      cursor: pointer;
-      list-style: none;
+    #sites-menu::after {
+      content: " ▾";
+      content: " ▾" / "";
     }
 
-    #sites-menu summary::-webkit-details-marker { display: none; }
-    #sites-menu summary::after { content: " ▾"; }
-
     #sites-list {
-      position: absolute;
-      z-index: 10;
-      top: calc(100% + 6px);
-      left: 0;
-      min-width: 320px;
-      max-width: calc(100vw - 32px);
-      margin: 0;
+      min-inline-size: min(320px, calc(100dvw - 32px));
+      max-inline-size: calc(100dvw - 32px);
       padding: 6px 0;
       list-style: none;
       background: var(--page);
-      color: #1a1a1a;
+      color: var(--text);
+      border: 1px solid var(--line);
       border-radius: 6px;
       box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+    }
+
+    /* Below its button where the browser can anchor it, flipped to stay in view; elsewhere the popover stays centred. */
+    @supports (position-area: block-end) {
+      #sites-list {
+        position-anchor: --sites-menu;
+        position-area: block-end span-inline-end;
+        position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+        inset: auto;
+        margin: 0;
+        margin-block-start: 6px;
+      }
     }
 
     #sites-list li {
@@ -119,15 +242,16 @@
       padding: 6px 12px;
     }
 
-    #sites-list li.empty { display: block; color: #666; }
-    #sites-list a { color: #1a5fb4; font-weight: 600; }
-    #sites-list .details { grid-column: 1; font-size: 12px; color: #666; }
+    #sites-list li.empty { display: block; color: var(--text-muted); }
+    #sites-list a { color: var(--link); font-weight: 600; }
+    #sites-list .details { grid-column: 1; font-size: 0.75rem; color: var(--text-muted); }
     #sites-list .actions { grid-row: 1 / span 2; grid-column: 2; align-self: center; display: flex; gap: 6px; }
-    #sites-list button { color: #1a5fb4; border-color: #a7bfdc; }
-    #sites-list button.delete { color: #a51d2d; border-color: #c6a0a6; }
+    #sites-list button { color: var(--link); border-color: var(--link-border); }
+    #sites-list button.delete { color: var(--danger); border-color: var(--danger-border); }
 
+    #mail-count:empty { display: none; }
     #mail-count:not(:empty) {
-      margin-left: 4px;
+      margin-inline-start: 4px;
       padding: 0 6px;
       border-radius: 8px;
       background: var(--accent);
@@ -135,58 +259,172 @@
       font-weight: 600;
     }
 
-    #mail-dialog {
-      width: min(1000px, calc(100vw - 32px));
-      height: min(700px, calc(100vh - 64px));
+    dialog {
       padding: 0;
-      border: 0;
+      border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
-      color: #1a1a1a;
+      color: var(--text);
       background: var(--page);
     }
 
-    #mail-dialog[open] { display: grid; grid-template-rows: auto 1fr; }
-    #mail-dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
 
-    #mail-dialog header { justify-content: space-between; }
-    #mail-dialog .body { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; min-height: 0; }
+    #mail-dialog {
+      inline-size: min(1000px, calc(100% - 32px));
+      block-size: min(700px, calc(100dvh - 64px));
+    }
+
+    #mail-dialog[open] { display: grid; grid-template-rows: auto 1fr; }
+
+    #mail-dialog header { flex-direction: row; align-items: center; justify-content: space-between; }
+    #mail-dialog .body { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; min-block-size: 0; }
 
     #mail-list {
       margin: 0;
       padding: 0;
       overflow: auto;
+      overscroll-behavior: contain;
       list-style: none;
-      border-right: 1px solid #ddd;
+      border-inline-end: 1px solid var(--line);
     }
 
-    #mail-list li { padding: 8px 12px; border-bottom: 1px solid #eee; cursor: pointer; }
-    #mail-list li.selected { background: #e8f0fb; }
-    #mail-list li.empty { color: #666; cursor: default; }
+    #mail-list li { border-block-end: 1px solid var(--line-light); }
+    #mail-list li.empty { padding: 8px 12px; color: var(--text-muted); }
+    #mail-list button {
+      display: block;
+      inline-size: 100%;
+      padding: 8px 12px;
+      border: 0;
+      border-inline-start: 3px solid transparent;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: start;
+      cursor: pointer;
+    }
+    #mail-list button[aria-current="true"] {
+      background: var(--selected);
+      border-inline-start-color: var(--link);
+    }
+    #mail-list button:focus-visible {
+      outline: 2px solid var(--link);
+      outline-offset: -2px;
+    }
     #mail-list .subject { font-weight: 600; }
-    #mail-list .meta { font-size: 12px; color: #666; }
+    #mail-list .meta { font-size: 0.75rem; color: var(--text-muted); }
 
-    #mail-view { display: grid; grid-template-rows: auto 1fr; min-height: 0; }
-    #mail-headers { margin: 0; padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #eee; }
-    #mail-headers dt { float: left; clear: left; width: 64px; color: #666; }
-    #mail-headers dd { margin-left: 72px; }
-    #mail-text { margin: 0; padding: 12px; overflow: auto; white-space: pre-wrap; font: 13px ui-monospace, Consolas, monospace; }
-    #mail-html { width: 100%; height: 100%; border: 0; }
+    #mail-view { display: grid; grid-template-rows: auto 1fr; min-block-size: 0; }
+    #mail-headers { margin: 0; padding: 8px 12px; font-size: 0.8125rem; border-block-end: 1px solid var(--line-light); }
+    #mail-headers dt { float: inline-start; clear: inline-start; inline-size: 64px; color: var(--text-muted); }
+    #mail-headers dd { margin-inline-start: 72px; }
+    #mail-text { margin: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; white-space: pre-wrap; font: 0.8125rem ui-monospace, Consolas, monospace; }
+    #mail-html { display: block; inline-size: 100%; block-size: 100%; border: 0; }
 
     @media (max-width: 640px) {
       #mail-dialog .body { grid-template-columns: 1fr; grid-template-rows: 40% 1fr; }
-      #mail-list { border-right: 0; border-bottom: 1px solid #ddd; }
+      #mail-list { border-inline-end: 0; border-block-end: 1px solid var(--line); }
+    }
+
+    #token-dialog { inline-size: min(560px, calc(100% - 32px)); }
+    #token-dialog header { flex-direction: row; align-items: center; justify-content: space-between; }
+    #token-dialog .body { display: grid; gap: 12px; padding: 16px; }
+    #token-dialog p { margin: 0; line-height: 1.5; }
+    #token-dialog a { color: var(--link); }
+    #token-dialog input { inline-size: 100%; padding: 6px 8px; font: 0.8125rem ui-monospace, Consolas, monospace; }
+    #token-dialog :where(a:any-link, input, .actions button):focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+    :is(#token-dialog, #ask-dialog) .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+
+    :is(#token-dialog, #ask-dialog) .actions button {
+      min-block-size: 28px;
+      padding: 4px 12px;
+      border: 1px solid var(--link-border);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--link);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #token-dialog .actions button:disabled { opacity: 0.4; cursor: default; }
+    #token-dialog #token-forget { color: var(--danger); border-color: var(--danger-border); }
+    #token-state { color: var(--text-muted); font-size: 0.8125rem; }
+    #token-error { color: var(--danger); font-size: 0.8125rem; }
+
+    /* The page's own questions and messages (dialogs.js). */
+    #ask-dialog { inline-size: min(440px, calc(100% - 32px)); }
+    #ask-dialog .body { display: grid; gap: 12px; padding: 16px; }
+    #ask-message { margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
+    #ask-input { inline-size: 100%; padding: 6px 8px; font: inherit; }
+    #ask-dialog :where(input, button):focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+    #ask-dialog #ask-confirm { color: var(--bar-text); background: var(--link); border-color: var(--link); }
+    #ask-dialog #ask-confirm.danger { background: var(--danger); border-color: var(--danger); }
+
+    @media (prefers-color-scheme: dark) {
+      #ask-dialog #ask-confirm { color: var(--page); }
+    }
+
+    /* Dialogs and popovers fade and grow in, and back out; on close, overlay and display keep them in the top
+       layer until the transition ends. */
+    @media (prefers-reduced-motion: no-preference) {
+      dialog,
+      [popover] {
+        opacity: 0;
+        scale: 0.96;
+        transition-property: opacity, scale, overlay, display;
+        transition-duration: 0.15s;
+        transition-timing-function: ease-out;
+        transition-behavior: allow-discrete;
+      }
+
+      dialog[open],
+      [popover]:popover-open {
+        opacity: 1;
+        scale: 1;
+      }
+
+      dialog::backdrop {
+        opacity: 0;
+        transition-property: opacity, overlay, display;
+        transition-duration: 0.15s;
+        transition-behavior: allow-discrete;
+      }
+
+      dialog[open]::backdrop { opacity: 1; }
+
+      @starting-style {
+        dialog[open],
+        [popover]:popover-open {
+          opacity: 0;
+          scale: 0.96;
+        }
+
+        dialog[open]::backdrop { opacity: 0; }
+      }
+    }
+
+    @media (pointer: coarse) {
+      header button,
+      .version select,
+      #sites-list button,
+      #token-dialog .actions button,
+      #ask-dialog .actions button,
+      #mail-list button {
+        min-block-size: 44px;
+      }
     }
 
     #stage {
       position: relative;
       flex: 1;
+      min-block-size: 0;
       display: flex;
     }
 
     iframe {
+      display: block;
       flex: 1;
-      width: 100%;
+      inline-size: 100%;
       border: 0;
     }
 
@@ -195,55 +433,84 @@
       position: absolute;
       inset: 0;
       z-index: 5;
+      contain: layout style paint;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 24px;
-      background: #f2f5fa;
-      color: #1c2b4a;
-      font-size: 16px;
+      background: var(--loading);
+      color: var(--loading-text);
+      font-size: 1rem;
+    }
+
+    /* Reserve the loader's size before the custom element upgrades, preventing CLS. */
+    joomla-core-loader {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      inline-size: 160px;
+      block-size: 160px;
+      flex-shrink: 0;
+    }
+
+    #loading-status {
+      margin: 0;
+      inline-size: 100%;
+      padding-inline: 16px;
+      min-block-size: 2lh;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
     }
 
     #loading[hidden] { display: none; }
-    #loading.error #loading-status { color: #a51d2d; }
-    #loading.error joomla-core-loader { display: none; }
+    #loading.error #loading-status { color: var(--danger); }
+    #loading.error joomla-core-loader { visibility: hidden; }
   </style>
 </head>
 <body>
   <header>
-    <h1>Joomla Playground</h1>
-    <button id="open-site" type="button" disabled>Site</button>
-    <button id="open-admin" type="button" disabled>Administrator</button>
-    <span class="separator"></span>
-    <button id="new-site" type="button" disabled title="Start a new, empty playground">New</button>
-    <button id="reset-site" type="button" disabled title="Throw this playground away and start again from the same link">Start over</button>
-    <button id="save-site" type="button" disabled title="Keep this playground in your browser">Save…</button>
-    <button id="export-site" type="button" disabled title="Download the whole site as a zip">Export</button>
-    <button id="import-site" type="button" disabled title="Start a playground from an exported zip">Import…</button>
-    <input id="import-file" type="file" accept=".zip,application/zip" hidden>
-    <details id="sites-menu">
-      <summary>My sites</summary>
-      <ul id="sites-list"></ul>
-    </details>
-    <button id="mail" type="button" disabled title="The mails this site sent: they are caught, not delivered">Mail<span id="mail-count"></span></button>
-    <span id="status">Loading</span>
-    <span class="spacer"></span>
-    <span><span id="credentials-label">Super User:</span> <span id="credentials">…</span></span>
-    <label class="version">Joomla <select id="joomla-version" disabled title="Joomla version"></select></label>
-    <label class="version">PHP <select id="php-version" disabled title="PHP version (WebAssembly)"></select></label>
-    <span id="info"></span>
+    <div class="toolbar">
+      <h1><a href="overview/" target="_blank" rel="noopener" title="Overview: demos, guided tours, testing pull requests (opens in a new tab)">Joomla Playground<span class="visually-hidden"> (opens in a new tab)</span></a></h1>
+      <button id="open-site" type="button" disabled>Site</button>
+      <button id="open-admin" type="button" disabled>Administrator</button>
+      <span class="separator" aria-hidden="true"></span>
+      <button id="new-site" type="button" disabled title="Start a new, empty playground">New</button>
+      <button id="reset-site" type="button" disabled title="Throw this playground away and start again from the same link">Start over</button>
+      <button id="save-site" type="button" disabled title="Keep this playground in your browser">Save…</button>
+      <button id="export-site" type="button" disabled title="Download the whole site as a zip">Export</button>
+      <button id="import-site" type="button" disabled title="Start a playground from an exported zip">Import…</button>
+      <input id="import-file" type="file" accept=".zip,application/zip" hidden>
+      <button id="sites-menu" type="button" popovertarget="sites-list">My sites</button>
+      <ul id="sites-list" popover="auto"></ul>
+      <button id="mail" type="button" disabled title="The mails this site sent: they are caught, not delivered">Mail <span id="mail-count"></span></button>
+      <span id="pull-request" hidden>
+        <span class="separator" aria-hidden="true"></span>
+        <a id="pull-request-link" target="_blank" rel="noopener"></a>
+        <button id="pull-request-toggle" type="button" disabled></button>
+      </span>
+      <button id="github-token" type="button" disabled hidden title="The GitHub token the Patch Tester uses: remembered in this browser for every new playground">GitHub token…</button>
+      <span class="versions">
+        <label class="version" for="joomla-version">Joomla <select id="joomla-version" disabled title="Joomla version"></select></label>
+        <label class="version" for="php-version">PHP <select id="php-version" disabled title="PHP version (WebAssembly)"></select></label>
+      </span>
+    </div>
+    <div class="statusbar">
+      <span id="status" role="status" aria-live="polite" aria-atomic="true">Loading</span>
+      <span class="credentials"><span id="credentials-label">Super User:</span> <span id="credentials">…</span></span>
+      <span id="info"></span>
+    </div>
   </header>
-  <div id="stage">
+  <main id="stage">
     <iframe id="joomla" title="Joomla"></iframe>
-    <div id="loading" role="status" aria-live="polite">
-      <joomla-core-loader inline size="160" color="transparent"></joomla-core-loader>
+    <div id="loading">
+      <joomla-core-loader inline size="160" color="transparent" aria-hidden="true"></joomla-core-loader>
       <p id="loading-status">Loading</p>
     </div>
-  </div>
-  <dialog id="mail-dialog">
+  </main>
+  <dialog id="mail-dialog" closedby="any" aria-labelledby="mail-dialog-title">
     <header>
-      <h1>Mail sent by this playground</h1>
+      <h1 id="mail-dialog-title">Mail sent by this playground</h1>
       <form method="dialog"><button type="submit">Close</button></form>
     </header>
     <div class="body">
@@ -253,6 +520,44 @@
         <pre id="mail-text"></pre>
       </div>
     </div>
+  </dialog>
+  <dialog id="token-dialog" closedby="any" aria-labelledby="token-dialog-title">
+    <header>
+      <h1 id="token-dialog-title">GitHub token for the Patch Tester</h1>
+      <form method="dialog"><button type="submit">Close</button></form>
+    </header>
+    <form id="token-form" class="body" method="dialog">
+      <p>
+        The Patch Tester asks GitHub for the pull requests and their files. With a token, GitHub allows it far more
+        requests. This browser remembers the token on this computer and gives it to every new playground with the Patch
+        Tester, so you enter it once.
+      </p>
+      <p>
+        <strong>Use a token without permissions.</strong> The pages of this site can read it, and that includes the pull
+        requests you test. Make a
+        <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>
+        with access to public repositories only (read-only) and no further permissions: then it gives nothing beyond the
+        higher rate limit.
+      </p>
+      <label for="token-input">Token</label>
+      <input id="token-input" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" aria-describedby="token-state token-error">
+      <span id="token-state"></span>
+      <span id="token-error" role="alert"></span>
+      <div class="actions">
+        <button id="token-forget" type="button">Forget</button>
+        <button id="token-save" type="submit" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="ask-dialog" closedby="any" aria-labelledby="ask-message">
+    <form class="body" method="dialog">
+      <p id="ask-message"></p>
+      <input id="ask-input" type="text" autocomplete="off" aria-labelledby="ask-message" hidden>
+      <div class="actions">
+        <button id="ask-cancel" type="button">Cancel</button>
+        <button id="ask-confirm" type="submit" value="confirm">OK</button>
+      </div>
+    </form>
   </dialog>
   <script type="module" src="./src/main.js"></script>
 </body>
